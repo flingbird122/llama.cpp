@@ -1,7 +1,7 @@
-name: Windows-CUDA-MTP-Build
+name: Windows-RTX5060Ti-MTP-Build
 
 on:
-  workflow_dispatch: # 允许你手动点击按钮开始编译
+  workflow_dispatch: # 允许手动点按钮开始
 
 jobs:
   build:
@@ -10,22 +10,34 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 1. 部署 CUDA 环境 (针对 50 系列优化)
       - name: Setup CUDA Toolkit
         uses: jimver/cuda-toolkit@v0.2.14
         with:
-          cuda: '12.4.1' # 使用较新的 CUDA 版本
+          cuda: '12.4.1' # 匹配 2026 年主流稳定版本
 
+      # 2. 编译配置 (精准匹配你的硬件)
       - name: Configure and Build
         shell: pwsh
         run: |
           mkdir build
           cd build
-          # 开启 CUDA 并在编译时自动针对主流架构优化
-          cmake .. -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=all-major
+          # GGML_CUDA=ON: 开启显卡加速
+          # CMAKE_CUDA_ARCHITECTURES=120: 专为 RTX 5060 Ti (Blackwell) 定制
+          # GGML_AVX2=ON: 适配你的 i7-14700KF
+          # GGML_FLASH_ATTN=ON: 开启闪电注意力机制 (MTP 提速必须开启)
+          cmake .. -G "Visual Studio 17 2022" -A x64 `
+            -DGGML_CUDA=ON `
+            -DCMAKE_CUDA_ARCHITECTURES=120 `
+            -DGGML_AVX2=ON `
+            -DGGML_FLASH_ATTN=ON
+          
+          # 3. 开始构建 (指定只生成 server 模型，速度更快)
           cmake --build . --config Release -j 4 --target llama-server
 
+      # 3. 产物上传
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: llama-server-windows-cuda
+          name: llama-server-RTX5060Ti-Optimized
           path: build/bin/Release/llama-server.exe
