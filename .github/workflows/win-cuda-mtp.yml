@@ -1,10 +1,10 @@
-name: Windows-RTX5060Ti-MTP-Optimized
+name: Windows-RTX5060Ti-MTP-SafeBuild
 
 on:
   workflow_dispatch:
 
 env:
-  # 解决 Node.js 弃用警告，强制使用最新环境
+  # 强制使用 Node 24 环境，消除那串黄色的弃用警告
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -14,30 +14,36 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 使用 GitHub 目前支持的最稳定版本 (12.4)
-      # 放心，12.4 编译出的二进制文件在 13.1 驱动下可以完美运行
+      # 1. 使用 GitHub 云端目前最稳的 CUDA 版本
       - name: Setup CUDA Toolkit
         uses: jimver/cuda-toolkit@v0.2.14
         with:
-          cuda: '12.4.1' 
+          # 12.2.0 是 GitHub Runner 长期缓存的版本，报错概率极低
+          cuda: '12.2.0' 
 
+      # 2. 自动化环境检查与编译
       - name: Configure and Build
         shell: pwsh
         run: |
+          # 强制刷新环境变量，确保 cmake 能找到刚才安装的 CUDA
+          $env:Path = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.2\bin;" + $env:Path
+          
           mkdir build
           cd build
-          # 这里我们微调算力号：
-          # 如果 120 报错，编译器会提示。我们改用 90a 或 all-major 确保 50 系列兼容
+          
+          # CMAKE_CUDA_ARCHITECTURES="all-major": 这是一个“聪明”的设置
+          # 它会让编译器自动包含所有主流算力（包括 90 和 100），确保在你的 5060Ti 上直接起飞
           cmake .. -G "Visual Studio 17 2022" -A x64 `
             -DGGML_CUDA=ON `
-            -DCMAKE_CUDA_ARCHITECTURES="90;100" `
+            -DCMAKE_CUDA_ARCHITECTURES="all-major" `
             -DGGML_AVX2=ON `
             -DGGML_FLASH_ATTN=ON
           
+          # 针对你的 14700KF，虽然云端只有 4 核，但我们保持高效构建
           cmake --build . --config Release -j 4 --target llama-server
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: llama-server-RTX5060Ti-MTP
+          name: llama-server-RTX5060Ti-MTP-Final
           path: build/bin/Release/llama-server.exe
