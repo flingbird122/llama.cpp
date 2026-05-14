@@ -1,0 +1,31 @@
+name: Windows-CUDA-MTP-Build
+
+on:
+  workflow_dispatch: # 允许你手动点击按钮开始编译
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup CUDA Toolkit
+        uses: jimver/cuda-toolkit@v0.2.14
+        with:
+          cuda: '12.4.1' # 使用较新的 CUDA 版本
+
+      - name: Configure and Build
+        shell: pwsh
+        run: |
+          mkdir build
+          cd build
+          # 开启 CUDA 并在编译时自动针对主流架构优化
+          cmake .. -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=all-major
+          cmake --build . --config Release -j 4 --target llama-server
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-server-windows-cuda
+          path: build/bin/Release/llama-server.exe
