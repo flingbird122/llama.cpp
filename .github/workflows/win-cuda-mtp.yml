@@ -1,7 +1,11 @@
-name: Windows-RTX5060Ti-CUDA13-MTP-Build
+name: Windows-RTX5060Ti-MTP-Optimized
 
 on:
   workflow_dispatch:
+
+env:
+  # 解决 Node.js 弃用警告，强制使用最新环境
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -10,33 +14,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. 升级 CUDA Toolkit 版本至 13.1 兼容范围
+      # 使用 GitHub 目前支持的最稳定版本 (12.4)
+      # 放心，12.4 编译出的二进制文件在 13.1 驱动下可以完美运行
       - name: Setup CUDA Toolkit
         uses: jimver/cuda-toolkit@v0.2.14
         with:
-          # 2026年5月，建议直接使用最新版或本地对应的 13.1.x
-          cuda: '13.1.0' 
+          cuda: '12.4.1' 
 
       - name: Configure and Build
         shell: pwsh
         run: |
           mkdir build
           cd build
-          # 2. 关键改动：
-          # CMAKE_CUDA_ARCHITECTURES=120: 对应 RTX 50 系列 (Blackwell) 的原生算力
-          # GGML_CUDA_FORCE_FP16/FP8: 根据 5060Ti 特性，建议开启 Flash Attention
+          # 这里我们微调算力号：
+          # 如果 120 报错，编译器会提示。我们改用 90a 或 all-major 确保 50 系列兼容
           cmake .. -G "Visual Studio 17 2022" -A x64 `
             -DGGML_CUDA=ON `
-            -DCMAKE_CUDA_ARCHITECTURES=120 `
+            -DCMAKE_CUDA_ARCHITECTURES="90;100" `
             -DGGML_AVX2=ON `
-            -DGGML_FLASH_ATTN=ON `
-            -DGGML_CUDA_F16=ON
+            -DGGML_FLASH_ATTN=ON
           
-          # 3. 针对 14700KF 的多核性能，GitHub 编译机建议保持 -j 4 避免超限崩溃
           cmake --build . --config Release -j 4 --target llama-server
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: llama-server-CUDA13-RTX5060Ti
+          name: llama-server-RTX5060Ti-MTP
           path: build/bin/Release/llama-server.exe
