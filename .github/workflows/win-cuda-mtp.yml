@@ -1,11 +1,7 @@
-name: Windows-RTX5060Ti-MTP-SafeBuild
+name: Windows-RTX5060Ti-MTP-DirectBuild
 
 on:
   workflow_dispatch:
-
-env:
-  # 强制使用 Node 24 环境，消除那串黄色的弃用警告
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -14,36 +10,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. 使用 GitHub 云端目前最稳的 CUDA 版本
-      - name: Setup CUDA Toolkit
-        uses: jimver/cuda-toolkit@v0.2.14
-        with:
-          # 12.2.0 是 GitHub Runner 长期缓存的版本，报错概率极低
-          cuda: '12.2.0' 
+      # 1. 放弃插件，直接通过命令行下载并安装 CUDA 极简运行环境
+      - name: Install CUDA Manually
+        shell: powershell
+        run: |
+          $cuda_version = "12.2.0_536.25"
+          $url = "https://developer.download.nvidia.com/compute/cuda/12.2.0/local_installers/cuda_12.2.0_536.25_windows.exe"
+          Invoke-WebRequest -Uri $url -OutFile "cuda_install.exe"
+          Start-Process -FilePath ".\cuda_install.exe" -ArgumentList "-s", "nvcc_12.2", "cublas_12.2", "cublas_dev_12.2", "cudart_12.2" -Wait
 
-      # 2. 自动化环境检查与编译
+      # 2. 编译配置
       - name: Configure and Build
         shell: pwsh
         run: |
-          # 强制刷新环境变量，确保 cmake 能找到刚才安装的 CUDA
+          # 动态寻找刚才安装的 nvcc 路径
           $env:Path = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.2\bin;" + $env:Path
-          
           mkdir build
           cd build
-          
-          # CMAKE_CUDA_ARCHITECTURES="all-major": 这是一个“聪明”的设置
-          # 它会让编译器自动包含所有主流算力（包括 90 和 100），确保在你的 5060Ti 上直接起飞
           cmake .. -G "Visual Studio 17 2022" -A x64 `
             -DGGML_CUDA=ON `
             -DCMAKE_CUDA_ARCHITECTURES="all-major" `
             -DGGML_AVX2=ON `
             -DGGML_FLASH_ATTN=ON
-          
-          # 针对你的 14700KF，虽然云端只有 4 核，但我们保持高效构建
           cmake --build . --config Release -j 4 --target llama-server
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: llama-server-RTX5060Ti-MTP-Final
+          name: llama-server-Win-MTP
           path: build/bin/Release/llama-server.exe
